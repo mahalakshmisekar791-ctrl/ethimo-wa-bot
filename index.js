@@ -9,7 +9,14 @@ const axios = require("axios");
 const nodemailer = require("nodemailer");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
 const { JWT } = require("google-auth-library");
-const creds = require("./credentials.json");
+
+// Load Google credentials safely
+let creds = null;
+try {
+  creds = require("./credentials.json");
+} catch (e) {
+  console.log("⚠️ credentials.json not found — Google Sheets disabled");
+}
 
 const app = express();
 app.use(express.json());
@@ -249,28 +256,33 @@ async function processMessage(phone, text) {
 
 // ─── GOOGLE SHEETS — SAVE LEAD ───────────────────────────────
 async function saveLead(phone, lead) {
-  try {
-    const serviceAccountAuth = new JWT({
-      email: creds.client_email,
-      key: creds.private_key,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
-    await sheet.addRow({
-      Timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-      Name: lead.name || "—",
-      "WhatsApp Number": lead.phone || phone,
-      "Business Type": lead.business || "—",
-      Service: lead.service || "—",
-      Requirement: lead.requirement || "—",
-      Budget: lead.budget || "—",
-      Status: "New Lead",
-    });
-    console.log("✅ Lead saved to Google Sheets");
-  } catch (err) {
-    console.error("❌ Google Sheets error:", err.message);
+  // Save to Google Sheets only if credentials are available
+  if (creds && SHEET_ID && SHEET_ID !== "temp") {
+    try {
+      const serviceAccountAuth = new JWT({
+        email: creds.client_email,
+        key: creds.private_key,
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+      const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
+      await doc.loadInfo();
+      const sheet = doc.sheetsByIndex[0];
+      await sheet.addRow({
+        Timestamp: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+        Name: lead.name || "—",
+        "WhatsApp Number": lead.phone || phone,
+        "Business Type": lead.business || "—",
+        Service: lead.service || "—",
+        Requirement: lead.requirement || "—",
+        Budget: lead.budget || "—",
+        Status: "New Lead",
+      });
+      console.log("✅ Lead saved to Google Sheets");
+    } catch (err) {
+      console.error("❌ Google Sheets error:", err.message);
+    }
+  } else {
+    console.log("⚠️ Google Sheets skipped — credentials not configured");
   }
 
   // Send admin email notification
